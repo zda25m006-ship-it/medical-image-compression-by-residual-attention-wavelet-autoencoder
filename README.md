@@ -1,174 +1,151 @@
 # RAWA: Residual Attention Wavelet Autoencoder
-## Novel Near-Lossless Brain MRI Compression
+
+A PyTorch implementation for near-lossless brain MRI compression using a residual attention wavelet autoencoder. The repository includes both a full training pipeline and a separate evaluation script for re-running results on saved model weights.
 
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://python.org)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-orange)](https://pytorch.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
-> A novel deep learning model for near-lossless compression of brain MRI images that **outperforms CNN baselines and JPEG at equivalent quality settings**.
+## Overview
 
----
+This project explores a hybrid image-compression approach that combines:
 
-## 📊 Results
+- Haar wavelet decomposition
+- residual encoder-decoder blocks
+- CBAM attention at the bottleneck
+- multi-scale skip connections
+- multi-term reconstruction loss (MSE + MS-SSIM + gradient loss)
 
-| Model | PSNR (dB) ↑ | SSIM ↑ | BPP ↓ | Compression Ratio ↑ |
-|---|---|---|---|---|
-| JPEG Q10 | 28.55 | 0.8262 | 0.484 | 16.54× |
-| JPEG Q30 | 32.70 | 0.9279 | 0.780 | 10.25× |
-| CNN AE (Baseline) | 29.38 | 0.8432 | 3.761 | 2.13× |
-| JPEG Q75 | 37.38 | 0.9731 | 1.355 | 5.91× |
-| **RAWA (Proposed) 🏆** | **39.42** | **0.9866** | **2.317** | **3.45×** |
+The goal is to preserve clinically relevant anatomy and texture while achieving high compression ratios on grayscale brain MRI slices.
 
-### RAWA vs CNN Baseline
-| Metric | CNN AE | RAWA | Δ Improvement |
-|---|---|---|---|
-| PSNR | 29.38 dB | **39.42 dB** | **+10.04 dB** |
-| SSIM | 0.8432 | **0.9866** | **+0.1434** |
-| CR | 2.13× | **3.45×** | **+1.62×** |
+## Repository Structure
 
----
-
-## 🏗️ Architecture
-
-```
-INPUT MRI (128×128)
-      │
-  [Haar DWT]          ← Decomposes into LL/LH/HL/HH sub-bands
-      │
-  [Conv Head]         → (B, 48, 64, 64)  ────── skip f0 ─────┐
-      │                                                        │
-  [Downsample]        → (B, 96, 32, 32)  ──── skip f1 ──┐    │
-      │                                                   │    │
-  [Downsample]        → (B, 192, 16, 16)                 │    │
-      │                                                   │    │
-  [CBAM Attention]    ← Channel + Spatial attention       │    │
-      │                                                   │    │
-  [Bottleneck z]      → (B, 48, 16, 16) COMPRESSED        │    │
-      │                                                   │    │
-  [Upsample + merge] ←────────────────────────────────────┘    │
-      │                                                        │
-  [Upsample + merge] ←────────────────────────────────────────┘
-      │
-  [Conv Head → 4ch]
-      │
-  [Haar IDWT]         ← Reconstructs pixels
-      │
-OUTPUT MRI (128×128)
-```
-
-### Key Innovations Over Plain CNN AE
-
-1. **Haar Wavelet DWT** — Decomposes MRI into frequency sub-bands (LL = structure, LH/HL/HH = edges). The network learns to compress each sub-band separately, far more efficient than raw pixels.
-
-2. **CBAM Attention** — Channel + Spatial attention at the bottleneck directs the model to focus on diagnostically critical regions (tumor boundaries, tissue contrast).
-
-3. **Multi-scale Wavelet Skip Connections** — Information bypasses the bottleneck at two spatial scales, preserving fine anatomical detail without increasing the latent code size.
-
-4. **Multi-Term Loss Function**:
-   ```
-   L = 0.50 × MSE + 0.35 × (1 − MS-SSIM) + 0.15 × Gradient-L1
-   ```
-   - MSE: pixel-level fidelity
-   - MS-SSIM: structural + multi-scale similarity
-   - Gradient-L1: edge sharpness preservation (critical for MRI diagnosis)
-
----
-
-## 📁 Repository Structure
-
-```
-├── compression_model.py       # Full pipeline: data → train → eval → plots
-├── eval_only.py               # Load saved weights and re-run evaluation
+```text
+.
+├── LICENSE
+├── README.md
+├── compression_model.py      # full training pipeline
+├── eval_only.py              # loads saved checkpoints and evaluates plots
 ├── results/
-│   ├── comparison_table.csv   # Quantitative results all models
-│   ├── metrics_comparison.png # Bar chart — PSNR, SSIM, CR
-│   ├── psnr_vs_cr.png         # Quality vs compression scatter plot
-│   ├── training_curves.png    # Loss convergence curves
-│   ├── reconstruction_comparison.png  # Original | CNN | RAWA + error maps
-│   ├── samples/               # Individual MRI reconstruction samples
-│   ├── cnn_ae.pth             # Trained CNN AE weights
-│   └── rawa.pth               # Trained RAWA model weights
-└── README.md
+│   ├── comparison_table.csv  # generated metrics table
+│   ├── metrics_comparison.png
+│   ├── psnr_vs_cr.png
+│   ├── reconstruction_comparison.png
+│   ├── training_curves.png
+│   └── samples/
+├── .gitignore
+└── ...
 ```
 
----
+## Key Model Components
 
-## 🚀 Getting Started
+### RAWA architecture
 
-### 1. Install Dependencies
+- Haar DWT converts MRI images into LL/LH/HL/HH wavelet sub-bands.
+- A convolutional encoder extracts multi-scale features.
+- CBAM attention emphasizes clinically important regions and structural details.
+- Multi-scale skip connections preserve anatomical information.
+- Haar IDWT reconstructs the compressed image back to the spatial domain.
+
+### Baseline comparison
+
+The training pipeline also builds a plain CNN autoencoder baseline so the model can be compared directly against a conventional convolutional autoencoder.
+
+## Installation
+
+Install the required dependencies:
+
 ```bash
 pip install torch torchvision opencv-python scikit-image pandas matplotlib pillow
 ```
 
-### 2. Dataset
-Download the [Brain Tumor MRI Dataset](https://www.kaggle.com/datasets/masoudnickparvar/brain-tumor-mri-dataset) from Kaggle.
+## Dataset
 
-Structure expected:
-```
+The dataset is expected to be arranged as follows:
+
+```text
 d:\archive (2)\
-  Training\
-    glioma\
-    meningioma\
-    notumor\
-    pituitary\
-  Testing\
-    glioma\
-    meningioma\
-    notumor\
-    pituitary\
+├── Training\
+│   ├── glioma\
+│   ├── meningioma\
+│   ├── notumor\
+│   └── pituitary\
+└── Testing\
+    ├── glioma\
+    ├── meningioma\
+    ├── notumor\
+    └── pituitary\
 ```
 
-### 3. Train
+This project uses a Windows-style absolute path in the script (`d:\archive (2)`). If your dataset is stored elsewhere, update the `BASE_DIR` variable in the Python files.
+
+## Training
+
+Run the full training pipeline:
+
 ```bash
 python compression_model.py
 ```
 
-### 4. Evaluate Only (with saved weights)
+This script will:
+
+- load the MRI dataset
+- train the CNN baseline and RAWA model
+- compute evaluation metrics
+- generate comparison plots and reconstruction figures
+- save model checkpoints in `results/`
+
+## Evaluation Only
+
+If you already have trained model weights saved under `results/`, run:
+
 ```bash
 python eval_only.py
 ```
 
----
+This script loads the saved weights and reproduces the evaluation and visualization workflow without retraining.
 
-## 📈 Output Visualisations
+## Outputs
 
-### Metrics Comparison
-![Metrics Comparison](results/metrics_comparison.png)
+After training or evaluation, the project writes the following outputs to `results/`:
 
-### PSNR vs Compression Ratio Trade-off
-![PSNR vs CR](results/psnr_vs_cr.png)
+- `cnn_ae.pth`
+- `rawa.pth`
+- `comparison_table.csv`
+- `metrics_comparison.png`
+- `psnr_vs_cr.png`
+- `training_curves.png`
+- `reconstruction_comparison.png`
+- `samples/`
 
-### Training Curves
-![Training Curves](results/training_curves.png)
+## Training Configuration
 
-### Reconstruction Comparison (Original | CNN AE | RAWA)
-![Reconstruction](results/reconstruction_comparison.png)
+The current implementation uses:
 
----
+- Image size: 128 × 128 grayscale
+- Batch size: 16
+- Epochs: 25
+- Optimizer: AdamW
+- Learning rate: 3e-4
+- Scheduler: Cosine Annealing
+- Device: CUDA if available, otherwise CPU
 
-## ⚙️ Training Configuration
+## Loss Function
 
-| Setting | Value |
-|---|---|
-| Image size | 128 × 128 (grayscale) |
-| Epochs | 25 per model |
-| Optimizer | AdamW, lr=3e-4 |
-| LR Schedule | Cosine Annealing |
-| Batch size | 16 |
-| RAWA parameters | 0.66M |
-| CNN AE parameters | 0.51M |
-| Loss weights | MSE=0.50, MS-SSIM=0.35, Grad=0.15 |
+The RAWA model uses a composite loss designed to balance fidelity and perceptual quality:
 
----
+```text
+L = 0.50 × MSE + 0.35 × (1 − MS-SSIM) + 0.15 × Gradient-L1
+```
 
-## 📚 References
+This improves reconstruction quality while preserving edges and texture, which is especially important for medical imaging.
 
-- Haar, A. (1910). *Zur Theorie der orthogonalen Funktionensysteme*
-- Woo, S. et al. (2018). [CBAM: Convolutional Block Attention Module](https://arxiv.org/abs/1807.06521). ECCV.
-- Wang, Z. et al. (2004). [Image quality assessment: from error visibility to structural similarity](https://doi.org/10.1109/TIP.2003.819861). IEEE TIP.
-- Nickparvar, M. (2021). [Brain Tumor MRI Dataset](https://www.kaggle.com/datasets/masoudnickparvar/brain-tumor-mri-dataset). Kaggle.
+## Notes
 
----
+- The project is designed for grayscale brain MRI images.
+- Performance numbers are computed in the evaluation scripts based on the current dataset split.
+- The code is optimized for CPU execution as well as GPU when available.
 
-## 📄 License
-MIT License — see [LICENSE](LICENSE) for details.
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
